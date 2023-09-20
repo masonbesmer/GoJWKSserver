@@ -1,0 +1,394 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>JWKS: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">3555/JWKS/main.go (86.8%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+// imports
+import (
+        "crypto/rand"
+        "crypto/rsa"
+        "crypto/sha256"
+        "crypto/x509"
+        b64 "encoding/base64"
+        "encoding/hex"
+        "encoding/json"
+        "encoding/pem"
+        "math/big"
+        "net/http"
+        "time"
+
+        "github.com/golang-jwt/jwt/v5"
+)
+
+// keypair struct
+type Key struct {
+        privateKey  *rsa.PrivateKey
+        publicKey   *rsa.PublicKey
+        fingerprint string
+        expireTime  time.Time
+}
+
+// auth payload data
+type Credentials struct {
+        Password string //`json:"password"`
+        Username string //`json:"username"`
+}
+
+// jwt claims
+type Claims struct {
+        Username string `json:"username"`
+        jwt.RegisteredClaims
+}
+
+// token payload data
+type Token struct {
+        Username string
+        Exp      int
+}
+
+// returned when jwks hit
+type JWKSentry struct {
+        Kty string `json:"kty"`
+        Use string `json:"use"`
+        Alg string `json:"alg"`
+        Kid string `json:"kid"`
+        N   string `json:"n"`
+        E   string `json:"e"`
+}
+
+var SigningKeys = make(map[string]*Key)
+var ExpiredKeys = make(map[string]*Key)
+
+// generate keypair
+func generateKeypair(expired bool) *Key <span class="cov8" title="1">{
+        privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        // validate it
+        <span class="cov8" title="1">err = privateKey.Validate()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        // set expiry
+        <span class="cov8" title="1">var expiry time.Time
+        if expired </span><span class="cov8" title="1">{
+                expiry = time.Now().Add(-time.Hour * 24)
+        }</span> else<span class="cov8" title="1"> {
+                expiry = time.Now().Add(time.Minute * 10)
+        }</span>
+
+        // generate public key and fingerprint
+        <span class="cov8" title="1">publicKey := generatePublicKey(privateKey)
+        fingerprint := generateKeyFingerprint(privateKey)
+
+        // store in a struct
+        key := Key{
+                privateKey:  privateKey,
+                publicKey:   publicKey,
+                fingerprint: fingerprint,
+                expireTime:  expiry,
+        }
+
+        // return pointer to struct
+        return &amp;key</span>
+}
+
+// encode public key to pem (readable)
+func encodePublicPEM(privateKey *rsa.PrivateKey) *pem.Block <span class="cov8" title="1">{
+        publicKey := &amp;privateKey.PublicKey
+        publicPEM := &amp;pem.Block{
+                Type:  "RSA PUBLIC KEY",
+                Bytes: x509.MarshalPKCS1PublicKey(publicKey),
+        }
+        return publicPEM
+}</span>
+
+// generate public key from private key
+func generatePublicKey(privateKey *rsa.PrivateKey) *rsa.PublicKey <span class="cov8" title="1">{
+        publicKey := &amp;privateKey.PublicKey
+        return publicKey
+}</span>
+
+// generate sha256 hash of public key for id
+func generateKeyFingerprint(privateKey *rsa.PrivateKey) string <span class="cov8" title="1">{
+        keyID := sha256.Sum256(encodePublicPEM(privateKey).Bytes)
+        fingerprint := hex.EncodeToString(keyID[:])
+
+        return fingerprint
+}</span>
+
+func auth(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        // verify method
+        method := req.Method
+
+        switch method </span>{
+        case http.MethodPost:<span class="cov8" title="1">
+                // check if expired
+                requestingExpiredJWT := req.URL.Query().Get("expired")
+                if requestingExpiredJWT == "true" </span><span class="cov8" title="1">{
+                        generateExpiredJWT(w, req)
+                }</span> else<span class="cov8" title="1"> {
+                        generateUnexpiredJWT(w, req)
+                }</span>
+        // not allowed
+        default:<span class="cov8" title="1">
+                http.Error(w, "Unsupported HTTP method", http.StatusMethodNotAllowed)
+                return</span>
+        }
+}
+
+func jwks(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        method := req.Method
+
+        // verify proper method
+        switch method </span>{
+        case http.MethodGet:<span class="cov8" title="1">
+                // json crap
+                var jwksMap = make(map[string][1]*JWKSentry)
+                var ShareableKeys [1]*JWKSentry
+                // has to be an array so that the brackets parse out as []
+                // package all valid keys
+                for fp, key := range SigningKeys </span><span class="cov8" title="1">{
+                        ShareableKeys[0] = &amp;JWKSentry{
+                                Kty: "RSA",
+                                Use: "sig",
+                                Alg: "RS256",
+                                Kid: fp,
+                                N:   b64.URLEncoding.EncodeToString(key.publicKey.N.Bytes()),
+                                E:   b64.URLEncoding.EncodeToString(big.NewInt(int64(key.publicKey.E)).Bytes()),
+                        }
+                }</span>
+                // package all
+                <span class="cov8" title="1">jwksMap["keys"] = ShareableKeys
+                jsonKeys, err := json.Marshal(jwksMap)
+                // stop if failed
+                if err != nil </span><span class="cov0" title="0">{
+                        w.WriteHeader(http.StatusInternalServerError)
+                        return
+                }</span>
+
+                // send keys
+                <span class="cov8" title="1">w.WriteHeader(http.StatusOK)
+                w.Header().Set("Content-Type", "application/json")
+                w.Write(jsonKeys)</span>
+        // not allowed
+        default:<span class="cov8" title="1">
+                http.Error(w, "Unsupported HTTP method", http.StatusMethodNotAllowed)
+                return</span>
+        }
+}
+
+func generateUnexpiredJWT(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        var creds Credentials
+
+        // challenge: bad request because runner was not sending payload as this is a prject and I was assuming that it would be sending payload all the time.
+        err := json.NewDecoder(req.Body).Decode(&amp;creds)
+        if err != nil </span><span class="cov8" title="1">{
+                creds.Username = "VeryCoolUserTotallyNotInsecureToHaveThisButItIsOkayBecauseThisIsASchoolAssignment"
+        }</span>
+
+        // generate valid jwt
+        <span class="cov8" title="1">expirationTime := time.Now().Add(time.Minute * 5)
+        // package claims
+        claims := &amp;Claims{
+                Username: creds.Username,
+                RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(expirationTime),
+                },
+        }
+
+        // generate token
+        token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+
+        // this is unsafe and WILL NOT WORK WITH MORE THAN 1 SIGNING KEY but lol idk how to select the first entry
+        for fingerprint := range SigningKeys </span><span class="cov8" title="1">{
+                // add kid
+                token.Header["kid"] = fingerprint
+                // sign token
+                tokenString, err := token.SignedString(SigningKeys[fingerprint].privateKey)
+
+                if err != nil </span><span class="cov0" title="0">{
+                        w.WriteHeader(http.StatusInternalServerError)
+                        return
+                }</span>
+
+                // send token
+                <span class="cov8" title="1">w.WriteHeader(http.StatusOK)
+                w.Header().Set("Content-Type", "text/plain")
+                w.Write([]byte(tokenString))</span>
+        }
+}
+
+func generateExpiredJWT(w http.ResponseWriter, req *http.Request) <span class="cov8" title="1">{
+        var creds Credentials
+
+        // encode payload
+        err := json.NewDecoder(req.Body).Decode(&amp;creds)
+        if err != nil </span><span class="cov8" title="1">{
+                // challenge: bad request because runner was not sending payload as this is a prject and I was assuming that it would be sending payload all the time.
+                creds.Username = "VeryCoolUserTotallyNotInsecureToHaveThisButItIsOkayBecauseThisIsASchoolAssignment"
+        }</span>
+
+        // generate expired jwt
+        <span class="cov8" title="1">expirationTime := time.Now().Add(-time.Minute * 5)
+        // package claims
+        claims := &amp;Claims{
+                Username: creds.Username,
+                RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(expirationTime),
+                },
+        }
+
+        // generate token
+        token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+
+        // this is unsafe and WILL NOT WORK WITH MORE THAN 1 SIGNING KEY but lol idk how to select the first entry
+        for fingerprint := range ExpiredKeys </span><span class="cov8" title="1">{
+                // add kid
+                token.Header["kid"] = fingerprint
+                // sign token
+                tokenString, err := token.SignedString(ExpiredKeys[fingerprint].privateKey)
+
+                if err != nil </span><span class="cov0" title="0">{
+                        w.WriteHeader(http.StatusInternalServerError)
+                        return
+                }</span>
+
+                // send token
+                <span class="cov8" title="1">w.WriteHeader(http.StatusOK)
+                w.Header().Set("Content-Type", "text/plain")
+                w.Write([]byte(tokenString))</span>
+        }
+}
+
+// shut up go compiler
+func UNUSED(x ...interface{}) {<span class="cov8" title="1">}</span>
+
+// generate variable amount of valid and expired keys
+func preGame() <span class="cov8" title="1">{
+        var key *Key
+        for i := range [1]int{} </span><span class="cov8" title="1">{
+                UNUSED(i)
+                key = generateKeypair(false)
+                SigningKeys[key.fingerprint] = key
+        }</span>
+        <span class="cov8" title="1">for i := range [1]int{} </span><span class="cov8" title="1">{
+                UNUSED(i)
+                key = generateKeypair(true)
+                ExpiredKeys[key.fingerprint] = key
+        }</span>
+}
+
+func main() <span class="cov0" title="0">{
+        // moved out of main to allow testing
+        preGame()
+
+        http.HandleFunc("/auth", auth)
+
+        http.HandleFunc("/.well-known/jwks.json", jwks)
+
+        http.ListenAndServe(":8080", nil)
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
