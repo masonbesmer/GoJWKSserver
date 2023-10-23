@@ -1,0 +1,16 @@
+meta {
+  name: Auth-Basic
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://127.0.0.1:8080/auth
+  body: none
+  auth: basic
+}
+
+auth:basic {
+  username: john
+  password: hammer
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Auth-JSON
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://127.0.0.1:8080/auth
+  body: json
+  auth: none
+}
+
+body:json {
+  {"username":"john123","password":"jeremyhill"}
+}
